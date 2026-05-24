@@ -1,6 +1,5 @@
 http:
   addr: ":8080"
-  tls: false
   timeouts:
     read_timeout: 10s
     read_header_timeout: 10s
@@ -10,7 +9,7 @@ http:
 
 kafka:
   brokers:
-    - "localhost:9092"
+    - "kafka:29092"
   topic: "search-logs"
   group_id: "search-trends-readers"
   client_id: "trends-service"

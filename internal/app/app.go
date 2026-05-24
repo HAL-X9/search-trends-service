@@ -4,10 +4,12 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"fmt"
 	"log/slog"
 	"os"
 	"time"
 
+	"github.com/HAL-X9/search-trends-service/internal/infra/broker"
 	"github.com/HAL-X9/search-trends-service/internal/infra/config"
 )
 
@@ -38,6 +40,10 @@ func Run() error {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	slog.SetDefault(logger)
 
+	if configPath == "" {
+		configPath = os.Getenv("CONFIG_PATH")
+	}
+
 	cfg, err := config.Load(configPath)
 	if err != nil {
 		logger.Error("failed to load configuration:", "error", err)
@@ -65,9 +71,24 @@ func Run() error {
 	return nil
 }
 
+type mockUseCase struct {
+	logger *slog.Logger
+}
+
+func (m *mockUseCase) ProcessQuery(ctx context.Context, query string) {
+	m.logger.Info("лог до usecase", "query", query)
+}
+
 // New производит DI (Dependency Injection) сборку всех слоев приложения
 func New(cfg *config.Config, logger *slog.Logger) (*App, error) {
-	components := make([]Component, 0, 2)
+	mockMock := &mockUseCase{logger: logger}
+
+	kafkaConsumer, err := broker.NewConsumerComponent(cfg.KafkaConfig, mockMock, logger)
+	if err != nil {
+		return nil, fmt.Errorf("failed to init kafka consumer: %w", err)
+	}
+
+	components := []Component{kafkaConsumer}
 
 	lifecycle := NewLifecycle(components, logger)
 	runtime := NewRuntime(lifecycle, 15*time.Second, logger)

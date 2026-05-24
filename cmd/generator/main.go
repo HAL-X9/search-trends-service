@@ -24,8 +24,13 @@ func main() {
 	logger.Info("starting search traffic generator...")
 
 	// Инициализация Franz-Kafka
+	brokers := os.Getenv("KAFKA_BROKERS")
+	if brokers == "" {
+		brokers = "localhost:9092"
+	}
+
 	cl, err := kgo.NewClient(
-		kgo.SeedBrokers("localhost:9092"),
+		kgo.SeedBrokers(brokers),
 	)
 	if err != nil {
 		logger.Error("failed to create kafka client", "error", err)
@@ -36,7 +41,7 @@ func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
-	ticker := time.NewTicker(5 * time.Millisecond)
+	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
 
 	logger.Info("generator successfully connected to kafka, broadcasting traffic...")
@@ -57,6 +62,8 @@ func main() {
 			cl.Produce(ctx, record, func(r *kgo.Record, err error) {
 				if err != nil {
 					logger.Error("failed to deliver message", "error", err)
+				} else {
+					logger.Info("message delivered successfully", "topic", r.Topic, "word", string(r.Value))
 				}
 			})
 		}

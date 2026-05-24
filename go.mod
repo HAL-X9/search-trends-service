@@ -1,6 +1,6 @@
 module github.com/HAL-X9/search-trends-service
 
-go 1.26.1
+go 1.26.0
 
 require (
 	github.com/twmb/franz-go v1.21.2

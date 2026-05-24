@@ -13,7 +13,7 @@ type HTTP struct {
 }
 
 type Timeouts struct {
-	ReadTimeout       time.Duration `yaml:"read_timeouts"`
+	ReadTimeout       time.Duration `yaml:"read_timeout"`
 	ReadHeaderTimeout time.Duration `yaml:"read_header_timeout"`
 	WriteTimeout      time.Duration `yaml:"write_timeout"`
 	IdleTimeout       time.Duration `yaml:"idle_timeout"`

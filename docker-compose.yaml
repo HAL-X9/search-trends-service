@@ -1,0 +1,69 @@
+version: '5.0'
+
+services:
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.4.0
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+
+  kafka:
+    image: confluentinc/cp-kafka:7.4.0
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+
+  # Профессиональный авто-создатель топиков
+  kafka-init-topics:
+    image: confluentinc/cp-kafka:7.4.0
+    depends_on:
+      - kafka
+    entrypoint: [ "/bin/bash", "-c" ]
+    command: |
+      # Ждем, пока Кафка начнет отвечать по сети
+      echo "Waiting for Kafka to be ready..."
+      cub kafka-ready -b kafka:29092 1 30
+      # Создаем топик
+      kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic search-logs --replication-factor 1 --partitions 1
+      echo "=== TOPIC SEARCH-LOGS CREATED SUCCESSFULLY ==="
+
+  search-trends-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        SERVICE_NAME: search-trends
+    depends_on:
+      kafka:
+        condition: service_started
+      kafka-init-topics:
+        condition: service_completed_successfully # Начнет работу ТОЛЬКО после создания топика
+    environment:
+      - KAFKA_BROKERS=kafka:29092
+      - CONFIG_PATH=config/config.yaml
+    restart: on-failure
+
+  traffic-generator:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        SERVICE_NAME: generator
+    depends_on:
+      kafka:
+        condition: service_started
+      kafka-init-topics:
+        condition: service_completed_successfully # Не начнет спамить, пока топик не готов!
+    environment:
+      - KAFKA_BROKERS=kafka:29092
+      - CONFIG_PATH=config/config.yaml
+    restart: on-failure
