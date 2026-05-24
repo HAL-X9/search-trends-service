@@ -23,10 +23,14 @@ func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	logger.Info("starting search traffic generator...")
 
-	// Инициализация Franz-Kafka
 	brokers := os.Getenv("KAFKA_BROKERS")
 	if brokers == "" {
 		brokers = "localhost:9092"
+	}
+
+	topic := os.Getenv("KAFKA_TOPIC")
+	if topic == "" {
+		topic = "search-logs"
 	}
 
 	cl, err := kgo.NewClient(
@@ -44,7 +48,10 @@ func main() {
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
 
-	logger.Info("generator successfully connected to kafka, broadcasting traffic...")
+	logger.Info("generator successfully connected to kafka, broadcasting traffic...",
+		"brokers", brokers,
+		"topic", topic,
+	)
 
 	for {
 		select {
@@ -55,13 +62,13 @@ func main() {
 			word := words[rand.Intn(len(words))]
 
 			record := &kgo.Record{
-				Topic: "search-logs",
+				Topic: topic,
 				Value: []byte(word),
 			}
 
 			cl.Produce(ctx, record, func(r *kgo.Record, err error) {
 				if err != nil {
-					logger.Error("failed to deliver message", "error", err)
+					logger.Error("failed to deliver message", "topic", topic, "error", err)
 				} else {
 					logger.Info("message delivered successfully", "topic", r.Topic, "word", string(r.Value))
 				}
