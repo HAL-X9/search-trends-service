@@ -17,7 +17,7 @@
 
 1.  **Клонируйте репозиторий и перейдите в корень проекта:**
     ```bash
-    git clone [https://github.com/HAL-X9/search-trends-service.git](https://github.com/HAL-X9/search-trends-service.git)
+    git clone https://github.com/HAL-X9/search-trends-service.git
     cd search-trends-service
     ```
 
