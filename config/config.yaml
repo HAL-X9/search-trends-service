@@ -8,3 +8,10 @@ http:
     idle_timeout: 120s
   max_header_bytes: 1048576
 
+kafka:
+  brokers:
+    - "localhost:9092"
+  topic: "search-logs"
+  group_id: "search-trends-readers"
+  client_id: "trends-service"
+  auto_offset_reset: "latest"

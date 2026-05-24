@@ -19,6 +19,15 @@ type Timeouts struct {
 	IdleTimeout       time.Duration `yaml:"idle_timeout"`
 }
 
+type KafkaConfig struct {
+	Brokers         []string `yaml:"brokers"`
+	Topic           string   `yaml:"topic"`
+	GroupID         string   `yaml:"group_id"`
+	ClientID        string   `yaml:"client_id"`
+	AutoOffsetReset string   `yaml:"auto_offset_reset"`
+}
+
 type Config struct {
-	HTTP HTTP `yaml:"http"`
+	HTTP        HTTP        `yaml:"http"`
+	KafkaConfig KafkaConfig `yaml:"kafka"`
 }
