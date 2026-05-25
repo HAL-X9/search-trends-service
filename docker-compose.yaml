@@ -51,6 +51,8 @@ services:
       dockerfile: Dockerfile
       args:
         SERVICE_NAME: search-trends
+    ports:
+      - "8080:8080"
     depends_on:
       kafka:
         condition: service_started
@@ -59,6 +61,8 @@ services:
     environment:
       - KAFKA_BROKERS=kafka:9092
       - CONFIG_PATH=config/config.yaml
+    volumes:
+      - ./config/stop-list.txt:/app/config/stop-list.txt
     restart: on-failure
 
   traffic-generator:
