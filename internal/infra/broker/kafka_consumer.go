@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/HAL-X9/search-trends-service/internal/infra/config"
+	"github.com/HAL-X9/search-trends-service/internal/observe"
 	"github.com/HAL-X9/search-trends-service/internal/usecases"
 	"github.com/twmb/franz-go/pkg/kgo"
 )
@@ -22,10 +23,16 @@ type ConsumerComponent struct {
 	client     *kgo.Client
 	interactor TrendsUseCase
 	topic      string
+	metrics    *observe.Metrics
 	wg         sync.WaitGroup
 }
 
-func NewConsumerComponent(cfg config.KafkaConfig, interactor TrendsUseCase, logger *slog.Logger) (*ConsumerComponent, error) {
+func NewConsumerComponent(
+	cfg config.KafkaConfig,
+	interactor TrendsUseCase,
+	metrics *observe.Metrics,
+	logger *slog.Logger,
+) (*ConsumerComponent, error) {
 	cl, err := kgo.NewClient(
 		kgo.SeedBrokers(cfg.Brokers...),
 		kgo.ConsumerGroup(cfg.GroupID),
@@ -42,6 +49,7 @@ func NewConsumerComponent(cfg config.KafkaConfig, interactor TrendsUseCase, logg
 		client:     cl,
 		interactor: interactor,
 		topic:      cfg.Topic,
+		metrics:    metrics,
 	}, nil
 }
 
@@ -75,15 +83,25 @@ func (c *ConsumerComponent) Run(ctx context.Context) error {
 
 			var event usecases.SearchEvent
 			if err := json.Unmarshal(record.Value, &event); err != nil {
+				if c.metrics != nil {
+					c.metrics.KafkaEvents.WithLabelValues("invalid").Inc()
+				}
 				c.logger.Warn("skip invalid kafka message: failed to unmarshal SearchEvent", "error", err)
 				continue
 			}
 
 			if event.Query == "" {
+				if c.metrics != nil {
+					c.metrics.KafkaEvents.WithLabelValues("invalid").Inc()
+				}
 				continue
 			}
 
 			c.interactor.ProcessQuery(event)
+
+			if c.metrics != nil {
+				c.metrics.KafkaEvents.WithLabelValues("processed").Inc()
+			}
 		}
 	}
 }

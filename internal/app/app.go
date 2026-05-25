@@ -77,16 +77,15 @@ func New(cfg *config.Config, logger *slog.Logger) (*App, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to init stop-list storage: %w", err)
 	}
+	metrics := observe.NewMetrics()
 
 	antiFraud := usecases.NewAntiFraudDetector()
 
-	trendsInteractor := usecases.NewTrendsInteractor(stopListStorage, antiFraud, logger)
-
-	metrics := observe.NewMetrics()
+	trendsInteractor := usecases.NewTrendsInteractor(stopListStorage, antiFraud, logger, metrics)
 	httpHandler := httptransport.NewHandler(trendsInteractor, metrics)
 	httpComponent := httptransport.NewServerComponent(cfg.HTTP, httpHandler, logger)
 
-	kafkaConsumer, err := consumer.NewConsumerComponent(cfg.KafkaConfig, trendsInteractor, logger)
+	kafkaConsumer, err := consumer.NewConsumerComponent(cfg.KafkaConfig, trendsInteractor, metrics, logger)
 	if err != nil {
 		return nil, fmt.Errorf("failed to init kafka consumer: %w", err)
 	}

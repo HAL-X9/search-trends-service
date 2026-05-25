@@ -5,9 +5,12 @@ import (
 	"sort"
 	"sync"
 	"time"
+
+	"github.com/HAL-X9/search-trends-service/internal/observe"
 )
 
 type TrendsInteractor struct {
+	metrics   *observe.Metrics
 	logger    *slog.Logger
 	stopList  StopListStorage
 	antiFraud *AntiFraudDetector
@@ -19,7 +22,7 @@ type TrendsInteractor struct {
 	shutdownChan chan struct{}
 }
 
-func NewTrendsInteractor(stopList StopListStorage, antiFraud *AntiFraudDetector, logger *slog.Logger) *TrendsInteractor {
+func NewTrendsInteractor(stopList StopListStorage, antiFraud *AntiFraudDetector, logger *slog.Logger, metrics *observe.Metrics) *TrendsInteractor {
 	ti := &TrendsInteractor{
 		logger:       logger.With("layer", "usecase"),
 		stopList:     stopList,
@@ -27,6 +30,7 @@ func NewTrendsInteractor(stopList StopListStorage, antiFraud *AntiFraudDetector,
 		window:       NewSlidingWindow(),
 		topCache:     make([]WordStat, 0),
 		shutdownChan: make(chan struct{}),
+		metrics:      metrics,
 	}
 
 	go ti.startBackgroundAggregation()
@@ -39,11 +43,17 @@ func (ti *TrendsInteractor) ProcessQuery(event SearchEvent) {
 	}
 
 	if ti.stopList.IsBanned(event.Query) {
+		if ti.metrics != nil {
+			ti.metrics.DroppedEvents.WithLabelValues("stop_list").Inc()
+		}
 		ti.logger.Debug("query dropped by stop-list", "query", event.Query)
 		return
 	}
 
 	if ti.antiFraud != nil && ti.antiFraud.IsSpam(event) {
+		if ti.metrics != nil {
+			ti.metrics.DroppedEvents.WithLabelValues("anti_fraud").Inc()
+		}
 		return
 	}
 
