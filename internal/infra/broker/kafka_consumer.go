@@ -2,17 +2,19 @@ package broker
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"sync"
 	"time"
 
 	"github.com/HAL-X9/search-trends-service/internal/infra/config"
+	"github.com/HAL-X9/search-trends-service/internal/usecases"
 	"github.com/twmb/franz-go/pkg/kgo"
 )
 
 type TrendsUseCase interface {
-	ProcessQuery(ctx context.Context, query string)
+	ProcessQuery(event usecases.SearchEvent)
 }
 
 type ConsumerComponent struct {
@@ -28,7 +30,7 @@ func NewConsumerComponent(cfg config.KafkaConfig, interactor TrendsUseCase, logg
 		kgo.SeedBrokers(cfg.Brokers...),
 		kgo.ConsumerGroup(cfg.GroupID),
 		kgo.ConsumeTopics(cfg.Topic),
-		kgo.FetchMaxBytes(5*1024*1024), // 5MB
+		kgo.FetchMaxBytes(5*1024*1024),
 		kgo.FetchMaxWait(100*time.Millisecond),
 	)
 	if err != nil {
@@ -66,12 +68,22 @@ func (c *ConsumerComponent) Run(ctx context.Context) error {
 			c.logger.Error("error while polling from kafka", "error", err)
 			continue
 		}
+
 		iter := fetches.RecordIter()
 		for !iter.Done() {
 			record := iter.Next()
-			query := string(record.Value)
 
-			c.interactor.ProcessQuery(ctx, query)
+			var event usecases.SearchEvent
+			if err := json.Unmarshal(record.Value, &event); err != nil {
+				c.logger.Warn("skip invalid kafka message: failed to unmarshal SearchEvent", "error", err)
+				continue
+			}
+
+			if event.Query == "" {
+				continue
+			}
+
+			c.interactor.ProcessQuery(event)
 		}
 	}
 }

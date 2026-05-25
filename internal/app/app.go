@@ -9,18 +9,19 @@ import (
 	"os"
 	"time"
 
-	"github.com/HAL-X9/search-trends-service/internal/infra/broker"
+	consumer "github.com/HAL-X9/search-trends-service/internal/infra/broker"
 	"github.com/HAL-X9/search-trends-service/internal/infra/config"
+	repo "github.com/HAL-X9/search-trends-service/internal/repository"
+	httptransport "github.com/HAL-X9/search-trends-service/internal/transport/http"
+	"github.com/HAL-X9/search-trends-service/internal/usecases"
 )
 
-// Component описывает абстрактный инфраструктурный контракт для запускаемых сервисов
 type Component interface {
 	Name() string
 	Run(ctx context.Context) error
 	Close(ctx context.Context) error
 }
 
-// App корень композиции приложения
 type App struct {
 	runtime *Runtime
 }
@@ -32,12 +33,11 @@ func init() {
 	flag.Parse()
 }
 
-// Run инициализирует и запускает приложение. Вызывается из main.go
 func Run() error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	slog.SetDefault(logger)
 
 	if configPath == "" {
@@ -46,13 +46,13 @@ func Run() error {
 
 	cfg, err := config.Load(configPath)
 	if err != nil {
-		logger.Error("failed to load configuration:", "error", err)
+		logger.Error("failed to load configuration", "error", err)
 		return err
 	}
 
 	application, err := New(cfg, logger)
 	if err != nil {
-		logger.Error("failed to bootstrap application:", "error", err)
+		logger.Error("failed to bootstrap application", "error", err)
 		return err
 	}
 
@@ -71,24 +71,28 @@ func Run() error {
 	return nil
 }
 
-type mockUseCase struct {
-	logger *slog.Logger
-}
-
-func (m *mockUseCase) ProcessQuery(ctx context.Context, query string) {
-	m.logger.Info("лог до usecase", "query", query)
-}
-
-// New производит DI (Dependency Injection) сборку всех слоев приложения
 func New(cfg *config.Config, logger *slog.Logger) (*App, error) {
-	mockMock := &mockUseCase{logger: logger}
+	stopListStorage, err := repo.NewStopListStorage("config/stop-list.txt")
+	if err != nil {
+		return nil, fmt.Errorf("failed to init stop-list storage: %w", err)
+	}
 
-	kafkaConsumer, err := broker.NewConsumerComponent(cfg.KafkaConfig, mockMock, logger)
+	antiFraud := usecases.NewAntiFraudDetector()
+
+	trendsInteractor := usecases.NewTrendsInteractor(stopListStorage, antiFraud, logger)
+
+	httpHandler := httptransport.NewHandler(trendsInteractor)
+	httpComponent := httptransport.NewServerComponent(cfg.HTTP, httpHandler, logger)
+
+	kafkaConsumer, err := consumer.NewConsumerComponent(cfg.KafkaConfig, trendsInteractor, logger)
 	if err != nil {
 		return nil, fmt.Errorf("failed to init kafka consumer: %w", err)
 	}
 
-	components := []Component{kafkaConsumer}
+	components := []Component{
+		httpComponent,
+		kafkaConsumer,
+	}
 
 	lifecycle := NewLifecycle(components, logger)
 	runtime := NewRuntime(lifecycle, 15*time.Second, logger)

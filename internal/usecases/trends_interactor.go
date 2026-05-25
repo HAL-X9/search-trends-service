@@ -7,11 +7,11 @@ import (
 	"time"
 )
 
-// TrendsInteractor координирует потоки данных, выполняет бизнес-правила
 type TrendsInteractor struct {
-	logger   *slog.Logger
-	stopList StopListStorage
-	window   *SlidingWindow
+	logger    *slog.Logger
+	stopList  StopListStorage
+	antiFraud *AntiFraudDetector
+	window    *SlidingWindow
 
 	topCache   []WordStat
 	topCacheMu sync.RWMutex
@@ -19,33 +19,38 @@ type TrendsInteractor struct {
 	shutdownChan chan struct{}
 }
 
-// NewTrendsInteractor конструирует интерактор и запускает фоновый воркер агрегации
-func NewTrendsInteractor(stopList StopListStorage, logger *slog.Logger) *TrendsInteractor {
+func NewTrendsInteractor(stopList StopListStorage, antiFraud *AntiFraudDetector, logger *slog.Logger) *TrendsInteractor {
 	ti := &TrendsInteractor{
 		logger:       logger.With("layer", "usecase"),
 		stopList:     stopList,
+		antiFraud:    antiFraud,
 		window:       NewSlidingWindow(),
 		topCache:     make([]WordStat, 0),
 		shutdownChan: make(chan struct{}),
 	}
 
 	go ti.startBackgroundAggregation()
-
 	return ti
 }
 
-// ProcessQuery точка входа для консьюмера Кафки
 func (ti *TrendsInteractor) ProcessQuery(event SearchEvent) {
+	if event.Query == "" {
+		return
+	}
+
 	if ti.stopList.IsBanned(event.Query) {
+		ti.logger.Debug("query dropped by stop-list", "query", event.Query)
+		return
+	}
+
+	if ti.antiFraud != nil && ti.antiFraud.IsSpam(event) {
 		return
 	}
 
 	bucket := ti.window.GetCurrentBucket()
-
 	bucket.Increment(event.Query)
 }
 
-// GetTopTrends возвращает актуальный Топ-N запросов
 func (ti *TrendsInteractor) GetTopTrends(limit int) []WordStat {
 	ti.topCacheMu.RLock()
 	defer ti.topCacheMu.RUnlock()
@@ -59,11 +64,9 @@ func (ti *TrendsInteractor) GetTopTrends(limit int) []WordStat {
 
 	result := make([]WordStat, limit)
 	copy(result, ti.topCache[:limit])
-
 	return result
 }
 
-// startBackgroundAggregation выделенная горутина
 func (ti *TrendsInteractor) startBackgroundAggregation() {
 	ticker := time.NewTicker(500 * time.Millisecond)
 	defer ticker.Stop()
@@ -73,7 +76,6 @@ func (ti *TrendsInteractor) startBackgroundAggregation() {
 		case <-ti.shutdownChan:
 			ti.logger.Info("background trends aggregator stopped")
 			return
-
 		case <-ticker.C:
 			totals := ti.window.AggregateAll()
 
@@ -102,23 +104,11 @@ func (ti *TrendsInteractor) startBackgroundAggregation() {
 }
 
 func (ti *TrendsInteractor) AddStopWord(word string) error {
-	ti.logger.Info("adding word to stop-list", "word", word)
-
-	if saver, ok := ti.stopList.(interface{ Add(string) error }); ok {
-		return saver.Add(word)
-	}
-
-	return nil
+	return ti.stopList.Add(word)
 }
 
 func (ti *TrendsInteractor) RemoveStopWord(word string) error {
-	ti.logger.Info("removing word from stop-list", "word", word)
-
-	if remover, ok := ti.stopList.(interface{ Remove(string) error }); ok {
-		return remover.Remove(word)
-	}
-
-	return nil
+	return ti.stopList.Remove(word)
 }
 
 func (ti *TrendsInteractor) Close() error {

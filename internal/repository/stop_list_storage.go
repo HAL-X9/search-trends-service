@@ -20,7 +20,6 @@ func NewStopListStorage(filePath string) (*StopListStorage, error) {
 		filePath: filePath,
 	}
 
-	// Читаем файл при старте, чтобы восстановить забаненные слова
 	file, err := os.OpenFile(filePath, os.O_RDONLY|os.O_CREATE, 0644)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open stop-list file: %w", err)
@@ -29,24 +28,25 @@ func NewStopListStorage(filePath string) (*StopListStorage, error) {
 
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
-		word := strings.TrimSpace(scanner.Text())
-		if word == "" {
+		word := strings.ToLower(strings.TrimSpace(scanner.Text()))
+		if word != "" { // исправлено: было == ""
 			storage.words[word] = struct{}{}
 		}
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("failed to scan stop-list file: %w", err)
 	}
 
 	return storage, nil
 }
 
-// IsBanned проверяет наличие слова в бане за O(1)
 func (s *StopListStorage) IsBanned(word string) bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	_, exists := s.words[strings.ToLower(word)]
+	_, exists := s.words[strings.ToLower(strings.TrimSpace(word))]
 	return exists
 }
 
-// Add добавляет слово в память и синхронно дописывает на диск (ADR 0002)
 func (s *StopListStorage) Add(word string) error {
 	cleanedWord := strings.ToLower(strings.TrimSpace(word))
 	if cleanedWord == "" {
@@ -76,10 +76,15 @@ func (s *StopListStorage) Add(word string) error {
 
 func (s *StopListStorage) Remove(word string) error {
 	cleanedWord := strings.ToLower(strings.TrimSpace(word))
+	if cleanedWord == "" {
+		return nil
+	}
 
 	s.mu.Lock()
 	delete(s.words, cleanedWord)
 	s.mu.Unlock()
 
+	// Вариант простой: удаляем только из RAM.
+	// Если нужна полная персистентность удаления — переписывай файл целиком.
 	return nil
 }

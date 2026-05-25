@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"log/slog"
 	"math/rand"
 	"os"
@@ -9,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/HAL-X9/search-trends-service/internal/usecases"
 	"github.com/twmb/franz-go/pkg/kgo"
 )
 
@@ -33,9 +35,7 @@ func main() {
 		topic = "search-logs"
 	}
 
-	cl, err := kgo.NewClient(
-		kgo.SeedBrokers(brokers),
-	)
+	cl, err := kgo.NewClient(kgo.SeedBrokers(brokers))
 	if err != nil {
 		logger.Error("failed to create kafka client", "error", err)
 		os.Exit(1)
@@ -48,31 +48,46 @@ func main() {
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
 
-	logger.Info("generator successfully connected to kafka, broadcasting traffic...",
-		"brokers", brokers,
-		"topic", topic,
-	)
-
 	for {
 		select {
 		case <-ctx.Done():
 			logger.Info("stopping generator gracefully...")
 			return
 		case <-ticker.C:
-			word := words[rand.Intn(len(words))]
+			event := usecases.SearchEvent{
+				Query:     words[rand.Intn(len(words))],
+				UserID:    "usr_demo_" + randomSuffix(4),
+				IPAddress: "192.168.1." + randomSuffix(2),
+				Timestamp: time.Now().Unix(),
+			}
+
+			payload, err := json.Marshal(event)
+			if err != nil {
+				logger.Error("failed to marshal event", "error", err)
+				continue
+			}
 
 			record := &kgo.Record{
 				Topic: topic,
-				Value: []byte(word),
+				Value: payload,
 			}
 
 			cl.Produce(ctx, record, func(r *kgo.Record, err error) {
 				if err != nil {
 					logger.Error("failed to deliver message", "topic", topic, "error", err)
-				} else {
-					logger.Info("message delivered successfully", "topic", r.Topic, "word", string(r.Value))
+					return
 				}
+				logger.Info("message delivered", "topic", r.Topic)
 			})
 		}
 	}
+}
+
+func randomSuffix(n int) string {
+	const letters = "0123456789"
+	b := make([]byte, n)
+	for i := range b {
+		b[i] = letters[rand.Intn(len(letters))]
+	}
+	return string(b)
 }
