@@ -58,7 +58,28 @@
       -H "Content-Type: application/json" \
       -d '{"word":"спам спам спам"}'
    ```
-    
+
+   > Примичание: как только вы запустите сервис traffic-generator (./cmd/generator/main.go) автоматически начинает отправлять события в  kafka, что бы вы могли сразу видеть пример работы программы, без ручной публикации сообщений.
+
+    #### Мониторинг и метрики
+
+   Сервис экспортирует метрики на endpoint:
+
+   `http://localhost:8080/metrics`
+
+   Для локального просмотра в UI Prometheus:
+
+    `http://localhost:9090`
+
+    Можете проверить метрики использовав следующие команды
+    ```
+    search_trends_app_up
+    search_trends_kafka_events_total
+    search_trends_dropped_events_total
+    search_trends_http_requests_total
+    rate(search_trends_kafka_events_total[1m])
+    ```
+
 ## Контракты данных
 
 Для интеграции со смежной командой поиска сформирован и зафиксирован следующий контракт сообщения (JSON):
@@ -117,3 +138,46 @@ Redis в свою очередь имеет сетевые задержки та
 Полная синхронизация файла происходит только при плановом перезапуске сервиса.
 
 > Подробнее про выбор данной архитектуры, ее реализацию и ограничения можно прочитать в документе [ADR-0002](./docs/0002-hybrid-persistent-stop-list.md)
+
+## Бенчмарки производительности
+
+Для подтверждения highload-подхода были добавлены микробенчмарки ключевой бизнес-логики в файле
+
+    `internal/usecases/trends_interactor_benchmark_test.go`
+
+### Что измерялось
+
+1. `BenchmarkTrendsInteractor_ProcessQuery`  
+   Скорость обработки входящего события (путь записи).
+
+2. `BenchmarkTrendsInteractor_GetTopTrends`  
+   Скорость чтения подготовленного топа (путь чтения).
+
+3. `BenchmarkSlidingWindow_AggregateAll`  
+   Скорость агрегации данных по всему 5-минутному окну.
+
+### Команда запуска
+
+```bash
+go test ./internal/usecases -run ^$ -bench . -benchmem -count=3
+```
+
+#### Результаты тестирования
+
+Окружение: goos: darwin, goarch: arm64, cpu: Apple M4
+
+Результаты:
+
+```
+BenchmarkTrendsInteractor_ProcessQuery-10     11656549    101.6 ns/op    32 B/op    1 allocs/op
+BenchmarkTrendsInteractor_ProcessQuery-10     11860592    101.6 ns/op    32 B/op    1 allocs/op
+BenchmarkTrendsInteractor_ProcessQuery-10     11802406    101.5 ns/op    32 B/op    1 allocs/op
+
+BenchmarkTrendsInteractor_GetTopTrends-10     100000000    14.68 ns/op     8 B/op    0 allocs/op
+BenchmarkTrendsInteractor_GetTopTrends-10     100000000    14.76 ns/op     8 B/op    0 allocs/op
+BenchmarkTrendsInteractor_GetTopTrends-10     100000000    14.71 ns/op     8 B/op    0 allocs/op
+
+BenchmarkSlidingWindow_AggregateAll-10          482826    2472 ns/op      256 B/op    2 allocs/op
+BenchmarkSlidingWindow_AggregateAll-10          486255    2544 ns/op      256 B/op    2 allocs/op
+BenchmarkSlidingWindow_AggregateAll-10          486091    2458 ns/op      256 B/op    2 allocs/op
+```

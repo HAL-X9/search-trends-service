@@ -87,6 +87,6 @@ services:
     ports:
       - "9090:9090"
     volumes:
-      - ./prometheus.yaml:/etc/prometheus/prometheus.yaml:ro
+      - ./prometheus.yaml:/etc/prometheus/prometheus.yml:ro
     depends_on:
       - search-trends-service
