@@ -7,17 +7,27 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/HAL-X9/search-trends-service/internal/observe"
 	"github.com/HAL-X9/search-trends-service/internal/usecases"
 )
+
+var testMetrics = observe.NewMetrics()
 
 type mockTrendsUseCase struct {
 	topTrends []usecases.WordStat
 	added     string
+	removed   string
 }
 
-func (m *mockTrendsUseCase) GetTopTrends(limit int) []usecases.WordStat { return m.topTrends }
-func (m *mockTrendsUseCase) AddStopWord(word string) error              { m.added = word; return nil }
-func (m *mockTrendsUseCase) RemoveStopWord(word string) error           { return nil }
+func (m *mockTrendsUseCase) GetTopTrends(_ int) []usecases.WordStat { return m.topTrends }
+func (m *mockTrendsUseCase) AddStopWord(word string) error {
+	m.added = word
+	return nil
+}
+func (m *mockTrendsUseCase) RemoveStopWord(word string) error {
+	m.removed = word
+	return nil
+}
 
 func TestHandler_GetTop(t *testing.T) {
 	mockUC := &mockTrendsUseCase{
@@ -25,7 +35,7 @@ func TestHandler_GetTop(t *testing.T) {
 			{Word: "платье", Count: 15},
 		},
 	}
-	handler := NewHandler(mockUC)
+	handler := NewHandler(mockUC, testMetrics)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/trends/top?limit=1", nil)
 	rr := httptest.NewRecorder()
@@ -47,7 +57,7 @@ func TestHandler_GetTop(t *testing.T) {
 }
 
 func TestHandler_AddStopWord_InvalidJSON(t *testing.T) {
-	handler := NewHandler(&mockTrendsUseCase{})
+	handler := NewHandler(&mockTrendsUseCase{}, testMetrics)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/stop-list", bytes.NewBufferString(`{"word": ""}`))
 	rr := httptest.NewRecorder()

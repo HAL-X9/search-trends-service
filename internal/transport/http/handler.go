@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/HAL-X9/search-trends-service/internal/observe"
 	"github.com/HAL-X9/search-trends-service/internal/usecases"
 )
 
@@ -25,11 +26,13 @@ type TrendsUseCase interface {
 
 type Handler struct {
 	interactor TrendsUseCase
+	metrics    *observe.Metrics
 }
 
-func NewHandler(interactor TrendsUseCase) *Handler {
+func NewHandler(interactor TrendsUseCase, metrics *observe.Metrics) *Handler {
 	return &Handler{
 		interactor: interactor,
+		metrics:    metrics,
 	}
 }
 

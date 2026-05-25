@@ -11,6 +11,7 @@ import (
 
 	consumer "github.com/HAL-X9/search-trends-service/internal/infra/broker"
 	"github.com/HAL-X9/search-trends-service/internal/infra/config"
+	"github.com/HAL-X9/search-trends-service/internal/observe"
 	repo "github.com/HAL-X9/search-trends-service/internal/repository"
 	httptransport "github.com/HAL-X9/search-trends-service/internal/transport/http"
 	"github.com/HAL-X9/search-trends-service/internal/usecases"
@@ -81,7 +82,8 @@ func New(cfg *config.Config, logger *slog.Logger) (*App, error) {
 
 	trendsInteractor := usecases.NewTrendsInteractor(stopListStorage, antiFraud, logger)
 
-	httpHandler := httptransport.NewHandler(trendsInteractor)
+	metrics := observe.NewMetrics()
+	httpHandler := httptransport.NewHandler(trendsInteractor, metrics)
 	httpComponent := httptransport.NewServerComponent(cfg.HTTP, httpHandler, logger)
 
 	kafkaConsumer, err := consumer.NewConsumerComponent(cfg.KafkaConfig, trendsInteractor, logger)

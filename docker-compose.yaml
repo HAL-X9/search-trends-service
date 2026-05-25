@@ -81,3 +81,12 @@ services:
       - KAFKA_TOPIC=search-logs
       - CONFIG_PATH=config/config.yaml
     restart: on-failure
+
+  prometheus:
+    image: prom/prometheus:v3.11.3
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yaml:/etc/prometheus/prometheus.yaml:ro
+    depends_on:
+      - search-trends-service
