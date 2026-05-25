@@ -34,7 +34,7 @@ func NewTrendsInteractor(stopList StopListStorage, logger *slog.Logger) *TrendsI
 	return ti
 }
 
-// ProcessQuery — точка входа для консьюмера Кафки.
+// ProcessQuery точка входа для консьюмера Кафки
 func (ti *TrendsInteractor) ProcessQuery(event SearchEvent) {
 	if ti.stopList.IsBanned(event.Query) {
 		return
@@ -63,7 +63,7 @@ func (ti *TrendsInteractor) GetTopTrends(limit int) []WordStat {
 	return result
 }
 
-// startBackgroundAggregation — выделенная горутина
+// startBackgroundAggregation выделенная горутина
 func (ti *TrendsInteractor) startBackgroundAggregation() {
 	ticker := time.NewTicker(500 * time.Millisecond)
 	defer ticker.Stop()
@@ -99,6 +99,26 @@ func (ti *TrendsInteractor) startBackgroundAggregation() {
 			ti.topCacheMu.Unlock()
 		}
 	}
+}
+
+func (ti *TrendsInteractor) AddStopWord(word string) error {
+	ti.logger.Info("adding word to stop-list", "word", word)
+
+	if saver, ok := ti.stopList.(interface{ Add(string) error }); ok {
+		return saver.Add(word)
+	}
+
+	return nil
+}
+
+func (ti *TrendsInteractor) RemoveStopWord(word string) error {
+	ti.logger.Info("removing word from stop-list", "word", word)
+
+	if remover, ok := ti.stopList.(interface{ Remove(string) error }); ok {
+		return remover.Remove(word)
+	}
+
+	return nil
 }
 
 func (ti *TrendsInteractor) Close() error {

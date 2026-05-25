@@ -1,15 +1,13 @@
 package config
 
 import (
-	"crypto/tls"
 	"time"
 )
 
 type HTTP struct {
-	Addr           string     `yaml:"addr"`
-	TLS            tls.Config `yaml:"tls"`
-	Timeouts       Timeouts   `yaml:"timeouts"`
-	MaxHeaderBytes int        `yaml:"max_header_bytes"`
+	Addr           string   `yaml:"addr"`
+	Timeouts       Timeouts `yaml:"timeouts"`
+	MaxHeaderBytes int      `yaml:"max_header_bytes"`
 }
 
 type Timeouts struct {
